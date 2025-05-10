@@ -137,6 +137,13 @@ See `treesit-thing-settings' for more information."))
   :group 'qml-ts)
 
 
+;; See https://github.com/emacs-mirror/emacs/blob/master/admin/notes/tree-sitter/starter-guide#indent
+;; for more information about the indentation rules.
+;;
+;; When writing indent rules, you can use ‘treesit-check-indent’ to check if
+;; your indentation is correct. To debug what went wrong, set
+;; ‘treesit–indent-verbose’ to non-nil. Then when you indent, Emacs tells you
+;; which rule is applied in the echo area.
 (defvar qml--treesit-indent-rules
   (let ((offset qml-ts-mode-indent-offset)
         (switch-case (rx "switch_" (or "case" "default"))))
@@ -233,16 +240,19 @@ See `treesit-thing-settings' for more information."))
      (variable_declarator
       name: (identifier) @font-lock-variable-name-face)
 
-     (variable_declarator
-      name: (identifier) @font-lock-function-name-face
-      value: [(function) (arrow_function)])
+     (ui_property
+      name: (identifier) @font-lock-property-name-face)
 
-     (variable_declarator
-      name: (array_pattern
-             (identifier)
-             (identifier)
-             @font-lock-function-name-face)
-      value: (array (number) (function)))
+   ;;   (variable_declarator
+   ;;    name: (identifier) @font-lock-function-name-face
+   ;;    value: [(function) (arrow_function)])
+
+   ;;   (variable_declarator
+   ;;    name: (array_pattern
+   ;;           (identifier)
+   ;;           (identifier)
+   ;;           @font-lock-function-name-face)
+   ;;    value: (array (number) (function)))
 
      (import_clause (identifier) @font-lock-variable-name-face)
      (import_clause (named_imports (import_specifier (identifier))
@@ -283,11 +293,11 @@ See `treesit-thing-settings' for more information."))
    :language 'qmljs
    :feature 'function
    '((call_expression
-      function: (identifier) @font-lock-variable-name-face)
+      function: (identifier) @font-lock-function-call-face)
 
      (call_expression
       function: (member_expression
-                 object: (identifier) @font-lock-variable-name-face
+                 object: (identifier) @font-lock-function-call-face
                  property: (property_identifier) @font-lock-function-name-face))
      )
 
@@ -343,57 +353,71 @@ Return nil if there is no name or if NODE is not a defun node."
   "Major mode for editing QML."
   :group 'qml-ts
   :syntax-table js-mode-syntax-table
-  ;; Comment
-  (c-ts-common-comment-setup)
-  (setq-local comment-multi-line t)
-  (setq-local treesit-text-type-regexp
-              (regexp-opt '("comment"
-                            "template_string")))
+  (when (treesit-ready-p 'qmljs)
+    ;; Comment
+    (c-ts-common-comment-setup)
+    (setq-local comment-multi-line t)
+    (setq-local treesit-text-type-regexp
+                (regexp-opt '("comment"
+                              "template_string")))
 
-  ;; Treesit setup
-  (treesit-parser-create 'qmljs)
+    ;; Treesit setup
+    (treesit-parser-create 'qmljs)
 
-  ;; Indent
-  (setq-local treesit-simple-indent-rules qml--treesit-indent-rules)
+    ;; Indent
+    (setq-local treesit-simple-indent-rules qml--treesit-indent-rules)
 
-  ;; Fontification.
-  ;; (setq-local treesit--font-lock-verbose t)
-  ;; (setq-local treesit-font-lock-level 4)
-  (setq-local treesit-font-lock-settings qml--treesit-font-lock-settings)
-  (setq-local treesit-font-lock-feature-list
-              '(( comment definition)
-                ( keyword string type)
-                ( assignment constant escape-sequence number
-                  pattern string-interpolation)
-                ( bracket delimiter function operator property)))
+    ;; Fontification.
+    ;; (setq-local treesit--font-lock-verbose t)
+    ;; (setq-local treesit-font-lock-level 4)
+    (setq-local treesit-font-lock-settings qml--treesit-font-lock-settings)
+    ;; Level 1 usually contains only comments and definitions.
+    ;; Level 2 usually adds keywords, strings, data types, etc.
+    ;; Level 3 usually represents full-blown fontifications, including
+    ;; assignments, constants, numbers and literals, etc.
+    ;; Level 4 adds everything else that can be fontified: delimiters,
+    (setq-local treesit-font-lock-feature-list
+                '(( comment definition)
+                  ( keyword string type)
+                  ( assignment constant escape-sequence number pattern string-interpolation)
+                  ( bracket delimiter function)
+                  ;; ( bracket delimiter function operator property)
+                  ))
 
-  ;; Navigation.
-  (setq-local treesit-defun-prefer-top-level t)
-  (setq-local treesit-defun-type-regexp
-              (rx (or "class_declaration"
-                      "method_definition"
-                      "function_declaration"
-                      "lexical_declaration"
-                      "ui_object_definition")))
+    ;; Navigation.
+    (setq-local treesit-defun-prefer-top-level t)
+    (setq-local treesit-defun-type-regexp
+                (rx (or "class_declaration"
+                        "method_definition"
+                        "function_declaration"
+                        "lexical_declaration"
+                        "ui_object_definition")))
 
-  (setq-local treesit-defun-name-function #'qml--treesit-defun-name)
+    (setq-local treesit-defun-name-function #'qml--treesit-defun-name)
 
-  (setq-local treesit-sentence-type-regexp
-              (regexp-opt js--treesit-sentence-nodes))
+    (setq-local treesit-sentence-type-regexp
+                (regexp-opt js--treesit-sentence-nodes))
 
 
-  ;; Imenu
-  (setq treesit-simple-imenu-settings
-        `(("Function" "\\`function_declaration\\'" nil nil)
-          ("Property" "\\`ui_property\\'" nil nil)
-          ("Signal" "\\`ui_signal\\'" nil nil)
-          ("Component" "\\`ui_object_definition\\'" nil nil)))
+    ;; Imenu
+    (setq treesit-simple-imenu-settings
+          `(("Function" "\\`function_declaration\\'" nil nil)
+            ("Property" "\\`ui_property\\'" nil nil)
+            ("Signal" "\\`ui_signal\\'" nil nil)
+            ("Component" "\\`ui_object_definition\\'" nil nil)))
 
-  (treesit-major-mode-setup)
-  )
+    ;; Activates some tree-sitter features. This uses the values of the
+    ;; following variables defined here to enable the corresponding feature:
+    ;; - [ ]`treesit-font-lock-settings'
+    ;; - [X]`treesit-simple-indent-rules'
+    ;; - [X]`treesit-defun-type-regexp'
+    ;; - [X]`treesit-defun-name-function'
+    ;; - [.]`treesit-sentence-type-regexp'
+    ;; - [X]`treesit-simple-imenu-settings'
+    ;; See Info manual for "elisp > Tree-sitter Major Modes"
+    (treesit-major-mode-setup)))
 
 
 (provide 'qml-ts-mode)
 
 ;;; qml-ts-mode.el ends here
-
